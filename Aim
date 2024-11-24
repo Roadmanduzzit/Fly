@@ -8,7 +8,7 @@ config.aimEnabled = false -- Aim is disabled by default
 config.FOVRadius = 150 -- Set default FOV radius
 config.smoothness = 0.2 -- Smooth aiming factor
 
--- AimLock Settings from FE Simple AimLock
+-- AimLock Settings
 config.aimPart = "HumanoidRootPart" -- Default aiming part
 config.teamCheck = false -- Should ignore players on the same team
 config.epitaph = 0.187 -- Aim prediction adjustment
@@ -29,10 +29,11 @@ FOVCircle.Color = Color3.fromRGB(255, 0, 0)
 FOVCircle.Radius = config.FOVRadius
 FOVCircle.Filled = false
 
--- Update FOV circle position
+-- Update FOV circle position and radius dynamically
 RunService.RenderStepped:Connect(function()
     local mouseLocation = UserInputService:GetMouseLocation()
     FOVCircle.Position = Vector2.new(mouseLocation.X, mouseLocation.Y)
+    FOVCircle.Radius = config.FOVRadius -- Update radius in real-time based on config
 end)
 
 -- Function to check if target is visible (not behind walls)
@@ -57,7 +58,7 @@ local function findNearestPlayer()
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(config.aimPart) and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
             if not config.teamCheck or player.Team ~= LocalPlayer.Team then
                 local character = player.Character
                 local aimPart = character:FindFirstChild(config.aimPart)
@@ -122,10 +123,14 @@ function config.stopAim()
     print("Aim disabled.")
 end
 
+function config.setVisibilityCheck(enabled)
+    config.visibilityCheck = enabled
+    print("Visibility Check is now:", config.visibilityCheck and "Enabled" or "Disabled")
+end
+
 -- Update FOV radius dynamically
 function config.setFOVRadius(radius)
     config.FOVRadius = radius
-    FOVCircle.Radius = radius
     print("FOV radius updated to:", radius)
 end
 

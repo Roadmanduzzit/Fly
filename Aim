@@ -1,104 +1,69 @@
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
+-- Expose configuration and control to the GUI
+getgenv().AimBotConfig = getgenv().AimBotConfig or {}
+local config = getgenv().AimBotConfig
+
+-- Default settings
+config.visibilityCheck = true -- Enable visibility check by default
+config.aimEnabled = false -- Aim is disabled by default
+
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
 
--- Visibility Check toggle
-local visibilityCheck = true -- Default to enabling wall checks
-
--- Create a ScreenGui to hold the FOV circle
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = HttpService:GenerateGUID(false) -- Unique name to bypass detection
-screenGui.ResetOnSpawn = false -- Prevents resetting on respawn
-screenGui.Parent = playerGui
-
--- Create the FOV Circle
-local fovCircle = Instance.new("Frame")
-fovCircle.Name = "FOVCircle"
-fovCircle.Size = UDim2.new(0, 200, 0, 200) -- Initial size of the FOV circle
-fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0) -- Centered on the screen
-fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-fovCircle.BackgroundTransparency = 1
-fovCircle.BorderSizePixel = 0
-fovCircle.Parent = screenGui
-
--- Add a UIStroke to create the circle outline
-local uiStroke = Instance.new("UIStroke")
-uiStroke.Thickness = 2
-uiStroke.Color = Color3.new(1, 1, 1) -- White color
-uiStroke.Transparency = 0.2
-uiStroke.Parent = fovCircle
-
--- Add a UICorner to make the frame circular
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(1, 0) -- Make the frame circular
-uiCorner.Parent = fovCircle
-
--- Update FOV circle position if screen size changes
-RunService.RenderStepped:Connect(function()
-    fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
-end)
-
--- Lock on to player feature
-local function isPointInCircle(point, circleCenter, radius)
-    return (point - circleCenter).Magnitude <= radius
-end
-
+-- Lock-on logic
 local function isTargetVisible(targetHead)
-    if not visibilityCheck then
+    if not config.visibilityCheck then
         return true -- Skip visibility check if disabled
     end
-    local camera = workspace.CurrentCamera
+    local camera = Workspace.CurrentCamera
     local origin = camera.CFrame.Position
     local direction = (targetHead.Position - origin).Unit * (targetHead.Position - origin).Magnitude
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {player.Character, targetHead.Parent}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     local raycastResult = Workspace:Raycast(origin, direction, raycastParams)
-    return not raycastResult -- If there's no obstruction, target is visible
+    return not raycastResult -- If no obstruction, the target is visible
 end
 
 local function lockOntoPlayer(target)
     local targetHead = target:FindFirstChild("Head")
     if targetHead then
-        local camera = workspace.CurrentCamera
-        local targetPosition = targetHead.Position + Vector3.new(0, 0.5, 0) -- Slight offset to aim better at head
-        local cameraCFrame = camera.CFrame.Position
-        local tween = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(cameraCFrame, targetPosition)})
+        local camera = Workspace.CurrentCamera
+        local targetPosition = targetHead.Position + Vector3.new(0, 0.5, 0) -- Slight offset for better aim
+        local tween = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(camera.CFrame.Position, targetPosition)})
         tween:Play()
     end
 end
 
+-- Main aim logic
 RunService.RenderStepped:Connect(function()
-    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local camera = workspace.CurrentCamera
-        local circleRadius = fovCircle.Size.X.Offset / 2
-        local circleCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    if config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local camera = Workspace.CurrentCamera
         for _, target in pairs(Players:GetPlayers()) do
             if target ~= player and target.Team ~= player.Team and target.Character and target.Character:FindFirstChild("Head") then
                 local head = target.Character.Head
                 local headScreenPos, onScreen = camera:WorldToViewportPoint(head.Position)
                 if onScreen and isTargetVisible(head) then
-                    local head2D = Vector2.new(headScreenPos.X, headScreenPos.Y)
-                    if isPointInCircle(head2D, circleCenter, circleRadius) then
-                        lockOntoPlayer(target.Character)
-                        break
-                    end
+                    lockOntoPlayer(target.Character)
+                    break
                 end
             end
         end
     end
 end)
 
--- Bypass anti-cheat detections
-pcall(function()
-    screenGui.DisplayOrder = math.huge -- Puts the GUI on top, less likely to be detected
-    fovCircle.ZIndex = math.huge -- Ensures it remains visible
-    screenGui.Parent = game:GetService("CoreGui") -- Moves the GUI to CoreGui for more concealment
-end)
+-- Functions to start and stop aiming
+function config.startAim()
+    config.aimEnabled = true
+    print("Aim enabled. Visibility Check:", config.visibilityCheck)
+end
 
-print("FOV Circle script loaded")
+function config.stopAim()
+    config.aimEnabled = false
+    print("Aim disabled.")
+end
+
+print("Aimbot script loaded with visibility check:", config.visibilityCheck)

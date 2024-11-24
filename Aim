@@ -11,9 +11,47 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
+-- Create a ScreenGui to hold the FOV circle
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = HttpService:GenerateGUID(false) -- Unique name to bypass detection
+screenGui.ResetOnSpawn = false -- Prevents resetting on respawn
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Create the FOV Circle
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FOVCircle"
+fovCircle.Size = UDim2.new(0, 200, 0, 200) -- Initial size of the FOV circle
+fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0) -- Centered on the screen
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Parent = screenGui
+
+-- Add a UIStroke to create the circle outline
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Thickness = 2
+uiStroke.Color = Color3.new(1, 1, 1) -- White color
+uiStroke.Transparency = 0.2
+uiStroke.Parent = fovCircle
+
+-- Add a UICorner to make the frame circular
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(1, 0) -- Make the frame circular
+uiCorner.Parent = fovCircle
+
+-- Update FOV circle position if screen size changes
+RunService.RenderStepped:Connect(function()
+    fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+end)
+
 -- Lock-on logic
+local function isPointInCircle(point, circleCenter, radius)
+    return (point - circleCenter).Magnitude <= radius
+end
+
 local function isTargetVisible(targetHead)
     if not config.visibilityCheck then
         return true -- Skip visibility check if disabled
@@ -33,7 +71,8 @@ local function lockOntoPlayer(target)
     if targetHead then
         local camera = Workspace.CurrentCamera
         local targetPosition = targetHead.Position + Vector3.new(0, 0.5, 0) -- Slight offset for better aim
-        local tween = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(camera.CFrame.Position, targetPosition)})
+        local cameraCFrame = camera.CFrame.Position
+        local tween = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(cameraCFrame, targetPosition)})
         tween:Play()
     end
 end
@@ -42,13 +81,18 @@ end
 RunService.RenderStepped:Connect(function()
     if config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
         local camera = Workspace.CurrentCamera
+        local circleRadius = fovCircle.Size.X.Offset / 2
+        local circleCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
         for _, target in pairs(Players:GetPlayers()) do
             if target ~= player and target.Team ~= player.Team and target.Character and target.Character:FindFirstChild("Head") then
                 local head = target.Character.Head
                 local headScreenPos, onScreen = camera:WorldToViewportPoint(head.Position)
                 if onScreen and isTargetVisible(head) then
-                    lockOntoPlayer(target.Character)
-                    break
+                    local head2D = Vector2.new(headScreenPos.X, headScreenPos.Y)
+                    if isPointInCircle(head2D, circleCenter, circleRadius) then
+                        lockOntoPlayer(target.Character)
+                        break
+                    end
                 end
             end
         end

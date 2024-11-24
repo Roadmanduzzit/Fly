@@ -1,18 +1,14 @@
--- Expose configuration and control to the GUI
+-- Aimbot Script - Geladen über Loadstring
 getgenv().AimBotConfig = getgenv().AimBotConfig or {}
 local config = getgenv().AimBotConfig
 
--- Default settings
-config.visibilityCheck = config.visibilityCheck or true -- Enable visibility check by default
-config.aimEnabled = config.aimEnabled or false -- Aim is disabled by default
-config.FOVRadius = config.FOVRadius or 150 -- Set default FOV radius
-config.smoothness = config.smoothness or 0.2 -- Smooth aiming factor
-
--- AimLock Settings
-config.aimPart = config.aimPart or "HumanoidRootPart" -- Default aiming part
-config.teamCheck = config.teamCheck or false -- Should ignore players on the same team
-config.epitaph = config.epitaph or 0.187 -- Aim prediction adjustment
-config.headOffset = config.headOffset or Vector3.new(0, 0.1, 0)
+-- Default Settings
+config.visibilityCheck = config.visibilityCheck or true
+config.aimEnabled = config.aimEnabled or false
+config.FOVRadius = config.FOVRadius or 150
+config.smoothness = config.smoothness or 0.2
+config.aimPart = config.aimPart or "HumanoidRootPart"
+config.teamCheck = config.teamCheck or false
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -21,24 +17,10 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = true
-FOVCircle.Thickness = 1
-FOVCircle.Transparency = 1
-FOVCircle.Color = Color3.fromRGB(255, 0, 0)
-FOVCircle.Filled = false
-
--- Function to update FOV circle position and radius dynamically
-local function updateFOVCircle()
-    FOVCircle.Radius = config.FOVRadius
-    local mouseLocation = UserInputService:GetMouseLocation()
-    FOVCircle.Position = Vector2.new(mouseLocation.X, mouseLocation.Y)
-end
-
--- Function to check if target is visible (not behind walls)
+-- Function to Check Visibility
 local function isTargetVisible(targetPart)
     if not config.visibilityCheck then
-        return true -- Skip visibility check if disabled
+        return true -- Wenn deaktiviert, überspringen
     end
 
     local origin = Camera.CFrame.Position
@@ -48,79 +30,35 @@ local function isTargetVisible(targetPart)
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
     local raycastResult = Workspace:Raycast(origin, direction, raycastParams)
-    return not raycastResult -- Return true if there is no obstruction
+    return not raycastResult -- Wenn keine Blockade, Ziel ist sichtbar
 end
 
--- Function to find nearest player within FOV
-local function findNearestPlayer()
-    local closestTarget = nil
-    local shortestDistance = math.huge
+-- Main Aim-Lock Functionality
+RunService.RenderStepped:Connect(function()
+    if config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local closestTarget = nil
+        local shortestDistance = math.huge
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(config.aimPart) and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-            if not config.teamCheck or player.Team ~= LocalPlayer.Team then
-                local character = player.Character
-                local aimPart = character:FindFirstChild(config.aimPart)
-                if aimPart and isTargetVisible(aimPart) then
-                    local aimPartScreenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
-                    if onScreen then
-                        local mouseLocation = UserInputService:GetMouseLocation()
-                        local distance = (Vector2.new(aimPartScreenPos.X, aimPartScreenPos.Y) - mouseLocation).Magnitude
-
-                        if distance < shortestDistance and distance <= config.FOVRadius then
-                            closestTarget = character
-                            shortestDistance = distance
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(config.aimPart) and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                if not config.teamCheck or player.Team ~= LocalPlayer.Team then
+                    local aimPart = player.Character:FindFirstChild(config.aimPart)
+                    if aimPart and isTargetVisible(aimPart) then
+                        local aimPartScreenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
+                        if onScreen then
+                            local distance = (Vector2.new(aimPartScreenPos.X, aimPartScreenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                            if distance < shortestDistance and distance <= config.FOVRadius then
+                                closestTarget = player.Character
+                                shortestDistance = distance
+                            end
                         end
                     end
                 end
             end
         end
-    end
 
-    return closestTarget
-end
-
--- Function to lock onto a player only if within the FOV
-local function lockOntoPlayer(targetCharacter)
-    if targetCharacter and targetCharacter:FindFirstChild(config.aimPart) then
-        local aimPart = targetCharacter[config.aimPart]
-        local predictedPosition = aimPart.CFrame + (aimPart.Velocity * config.epitaph) + config.headOffset
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, predictedPosition.Position)
-    end
-end
-
--- Main aimlock logic: This will be handled every frame
-RunService.RenderStepped:Connect(function()
-    updateFOVCircle() -- Update FOV circle position and size dynamically
-
-    if config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local target = findNearestPlayer() -- Continuously find the nearest target within FOV and visibility
-        if target then
-            lockOntoPlayer(target)
+        if closestTarget then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestTarget[config.aimPart].Position)
         end
     end
 end)
-
--- Functions to control aiming through GUI or command
-function config.startAim()
-    config.aimEnabled = true
-    print("Aim enabled. Visibility Check:", config.visibilityCheck)
-end
-
-function config.stopAim()
-    config.aimEnabled = false
-    print("Aim disabled.")
-end
-
-function config.setVisibilityCheck(enabled)
-    config.visibilityCheck = enabled
-    print("Visibility Check is now:", config.visibilityCheck and "Enabled" or "Disabled")
-end
-
--- Update FOV radius dynamically
-function config.setFOVRadius(radius)
-    config.FOVRadius = radius
-    print("FOV radius updated to:", radius)
-end
-
-print("AimLock script loaded successfully. Visibility Check:", config.visibilityCheck)

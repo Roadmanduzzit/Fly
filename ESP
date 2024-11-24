@@ -1,0 +1,128 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+
+local function createNameTag(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    if not player then return end
+
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+
+    -- Create a BillboardGui to display the player's name
+    local nameTag = Instance.new("BillboardGui")
+    nameTag.Parent = head
+    nameTag.Adornee = head
+    nameTag.Size = UDim2.new(0, 100, 0, 25)
+    nameTag.StudsOffset = Vector3.new(0, 2.5, 0)
+    nameTag.AlwaysOnTop = true
+
+    -- Create a TextLabel to display the player's name
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Parent = nameTag
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0.5
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextScaled = true
+    nameLabel.TextSize = 14
+    nameLabel.TextWrapped = true
+
+    -- Create a health bar
+    local healthBar = Instance.new("Frame")
+    healthBar.Size = UDim2.new(0.2, 0, 2, 0)
+    healthBar.Position = UDim2.new(-0.25, 0, -0.5, 0)
+    healthBar.BorderSizePixel = 0
+    healthBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    healthBar.Parent = head
+
+    -- Update health bar color and size
+    RunService.RenderStepped:Connect(function()
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            healthBar.Size = UDim2.new(0.2, 0, humanoid.Health / humanoid.MaxHealth * 2, 0)
+            healthBar.BackgroundColor3 = Color3.fromRGB(255 * (1 - humanoid.Health / humanoid.MaxHealth), 255 * (humanoid.Health / humanoid.MaxHealth), 0)
+        end
+    end)
+end
+
+local function drawSnapLine(player)
+    local snapLine = Drawing.new("Line")
+    snapLine.Color = Color3.fromRGB(255, 255, 255)
+    snapLine.Thickness = 1
+    snapLine.Transparency = 1
+
+    RunService.RenderStepped:Connect(function()
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            local vector, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+
+            if onScreen then
+                snapLine.Visible = true
+                snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                snapLine.To = Vector2.new(vector.X, vector.Y)
+            else
+                snapLine.Visible = false
+            end
+        else
+            snapLine.Visible = false
+        end
+    end)
+end
+
+local function draw2DBox(player)
+    local box = Drawing.new("Quad")
+    box.Color = Color3.fromRGB(255, 255, 255)
+    box.Thickness = 1
+    box.Transparency = 1
+    box.Filled = false
+
+    RunService.RenderStepped:Connect(function()
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            local vector, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+
+            if onScreen then
+                local headPos = Camera:WorldToViewportPoint(player.Character.Head.Position + Vector3.new(0, 0.5, 0))
+                local rootPos = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                local width = (headPos - rootPos).Magnitude / 2
+
+                box.PointA = Vector2.new(headPos.X - width, headPos.Y)
+                box.PointB = Vector2.new(headPos.X + width, headPos.Y)
+                box.PointC = Vector2.new(rootPos.X + width, rootPos.Y)
+                box.PointD = Vector2.new(rootPos.X - width, rootPos.Y)
+                box.Visible = true
+            else
+                box.Visible = false
+            end
+        else
+            box.Visible = false
+        end
+    end)
+end
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        createNameTag(character)
+        drawSnapLine(player)
+        draw2DBox(player)
+    end)
+
+    -- If the player has already spawned, add the features
+    if player.Character then
+        createNameTag(player.Character)
+        drawSnapLine(player)
+        draw2DBox(player)
+    end
+end
+
+-- Connect to new players joining after the script runs
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Handle all players that are already in the game
+for _, player in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(player)
+end

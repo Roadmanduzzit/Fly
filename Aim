@@ -5,101 +5,113 @@ local config = getgenv().AimBotConfig
 -- Default settings
 config.visibilityCheck = true -- Enable visibility check by default
 config.aimEnabled = false -- Aim is disabled by default
+config.FOVRadius = 150 -- Set default FOV radius
+config.smoothness = 0.2 -- Smooth aiming factor
+
+-- AimLock Settings from FE Simple AimLock
+config.aimPart = "HumanoidRootPart" -- Default aiming part
+config.teamCheck = false -- Should ignore players on the same team
+config.epitaph = 0.187 -- Aim prediction adjustment
+config.headOffset = Vector3.new(0, 0.1, 0)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
-local player = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
--- Create a ScreenGui to hold the FOV circle
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = HttpService:GenerateGUID(false) -- Unique name to bypass detection
-screenGui.ResetOnSpawn = false -- Prevents resetting on respawn
-screenGui.Parent = player:WaitForChild("PlayerGui")
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = true
+FOVCircle.Thickness = 1
+FOVCircle.Transparency = 1
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Radius = config.FOVRadius
+FOVCircle.Filled = false
 
--- Create the FOV Circle
-local fovCircle = Instance.new("Frame")
-fovCircle.Name = "FOVCircle"
-fovCircle.Size = UDim2.new(0, 200, 0, 200) -- Initial size of the FOV circle
-fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0) -- Centered on the screen
-fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-fovCircle.BackgroundTransparency = 1
-fovCircle.BorderSizePixel = 0
-fovCircle.Parent = screenGui
-
--- Add a UIStroke to create the circle outline
-local uiStroke = Instance.new("UIStroke")
-uiStroke.Thickness = 2
-uiStroke.Color = Color3.new(1, 1, 1) -- White color
-uiStroke.Transparency = 0.2
-uiStroke.Parent = fovCircle
-
--- Add a UICorner to make the frame circular
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(1, 0) -- Make the frame circular
-uiCorner.Parent = fovCircle
-
--- Update FOV circle position if screen size changes
+-- Update FOV circle position
 RunService.RenderStepped:Connect(function()
-    fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+    local mouseLocation = UserInputService:GetMouseLocation()
+    FOVCircle.Position = Vector2.new(mouseLocation.X, mouseLocation.Y)
 end)
 
--- Lock-on logic
-local function isPointInCircle(point, circleCenter, radius)
-    return (point - circleCenter).Magnitude <= radius
-end
-
-local function isTargetVisible(targetHead)
+-- Function to check if target is visible (not behind walls)
+local function isTargetVisible(targetPart)
     if not config.visibilityCheck then
         return true -- Skip visibility check if disabled
     end
-    local camera = Workspace.CurrentCamera
-    local origin = camera.CFrame.Position
-    local direction = (targetHead.Position - origin).Unit * (targetHead.Position - origin).Magnitude
+
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {player.Character, targetHead.Parent}
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
     local raycastResult = Workspace:Raycast(origin, direction, raycastParams)
-    return not raycastResult -- If no obstruction, the target is visible
+    return not raycastResult -- Return true if there is no obstruction
 end
 
-local function lockOntoPlayer(target)
-    local targetHead = target:FindFirstChild("Head")
-    if targetHead then
-        local camera = Workspace.CurrentCamera
-        local targetPosition = targetHead.Position + Vector3.new(0, 0.5, 0) -- Slight offset for better aim
-        local cameraCFrame = camera.CFrame.Position
-        local tween = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(cameraCFrame, targetPosition)})
-        tween:Play()
-    end
-end
+-- Function to find nearest player within FOV
+local function findNearestPlayer()
+    local closestTarget = nil
+    local shortestDistance = math.huge
 
--- Main aim logic
-RunService.RenderStepped:Connect(function()
-    if config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local camera = Workspace.CurrentCamera
-        local circleRadius = fovCircle.Size.X.Offset / 2
-        local circleCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-        for _, target in pairs(Players:GetPlayers()) do
-            if target ~= player and target.Team ~= player.Team and target.Character and target.Character:FindFirstChild("Head") then
-                local head = target.Character.Head
-                local headScreenPos, onScreen = camera:WorldToViewportPoint(head.Position)
-                if onScreen and isTargetVisible(head) then
-                    local head2D = Vector2.new(headScreenPos.X, headScreenPos.Y)
-                    if isPointInCircle(head2D, circleCenter, circleRadius) then
-                        lockOntoPlayer(target.Character)
-                        break
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            if not config.teamCheck or player.Team ~= LocalPlayer.Team then
+                local character = player.Character
+                local aimPart = character:FindFirstChild(config.aimPart)
+                if aimPart and isTargetVisible(aimPart) then
+                    local aimPartScreenPos, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
+                    if onScreen then
+                        local mouseLocation = UserInputService:GetMouseLocation()
+                        local distance = (Vector2.new(aimPartScreenPos.X, aimPartScreenPos.Y) - mouseLocation).Magnitude
+
+                        if distance < shortestDistance and distance <= config.FOVRadius then
+                            closestTarget = character
+                            shortestDistance = distance
+                        end
                     end
                 end
             end
         end
     end
+
+    return closestTarget
+end
+
+-- Function to lock onto a player only if within the FOV
+local function lockOntoPlayer(targetCharacter)
+    if targetCharacter and targetCharacter:FindFirstChild(config.aimPart) then
+        local aimPart = targetCharacter[config.aimPart]
+        local predictedPosition = aimPart.CFrame + (aimPart.Velocity * config.epitaph) + config.headOffset
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, predictedPosition.Position)
+    end
+end
+
+-- Main aimlock logic
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        config.aimEnabled = true
+
+        while config.aimEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) do
+            RunService.RenderStepped:Wait()
+
+            local target = findNearestPlayer() -- Continuously find the nearest target within FOV and visible
+            if target then
+                lockOntoPlayer(target)
+            end
+        end
+    end
 end)
 
--- Functions to start and stop aiming
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        config.aimEnabled = false
+    end
+end)
+
+-- Functions to control aiming through GUI or command
 function config.startAim()
     config.aimEnabled = true
     print("Aim enabled. Visibility Check:", config.visibilityCheck)
@@ -110,4 +122,11 @@ function config.stopAim()
     print("Aim disabled.")
 end
 
-print("Aimbot script loaded with visibility check:", config.visibilityCheck)
+-- Update FOV radius dynamically
+function config.setFOVRadius(radius)
+    config.FOVRadius = radius
+    FOVCircle.Radius = radius
+    print("FOV radius updated to:", radius)
+end
+
+print("AimLock script loaded successfully. Visibility Check:", config.visibilityCheck)

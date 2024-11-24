@@ -1,0 +1,40 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local flying = false
+local speed = 100
+local bodyGyro
+local bodyVelocity
+
+local function startFlying()
+    local player = Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.P = 9e4
+    bodyGyro.Parent = humanoidRootPart
+    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Parent = humanoidRootPart
+    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+    flying = true
+
+    RunService.RenderStepped:Connect(function()
+        if flying and bodyVelocity and bodyGyro then
+            bodyVelocity.Velocity = humanoidRootPart.CFrame.LookVector * speed
+            bodyGyro.CFrame = workspace.CurrentCamera.CFrame
+        end
+    end)
+end
+
+local function stopFlying()
+    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    flying = false
+end
+
+-- Example of usage:
+-- Call `startFlying()` to start flying and `stopFlying()` to stop.
